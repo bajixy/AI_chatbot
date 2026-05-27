@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Iterable
+import httpx
 from openai import AzureOpenAI
 
 from config import Settings
@@ -17,6 +18,8 @@ class AzureAIClient:
             azure_endpoint=settings.azure_endpoint,
             api_key=settings.azure_api_key,
             api_version=settings.azure_api_version,
+            timeout=httpx.Timeout(60.0, connect=20.0),
+            max_retries=1,
         )
 
     def create_embedding(self, text: str) -> list[float]:
