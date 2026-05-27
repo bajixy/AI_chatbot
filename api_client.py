@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Any
 from urllib.parse import urljoin
 import httpx
 
@@ -14,38 +14,64 @@ class AzureAIClient:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.http_client = httpx.Client(timeout=httpx.Timeout(60.0, connect=20.0))
+        self.http_client = httpx.Client(
+            timeout=httpx.Timeout(120.0, connect=60.0),
+            follow_redirects=True,
+        )
 
     def create_embedding(self, text: str) -> list[float]:
         """Create an embedding vector using the assignment embedding model."""
 
         endpoint = self._embedding_url()
-        response = self.http_client.post(
+        data = self._post_json(
             endpoint,
-            headers=self._headers(),
-            json={"input": text},
+            json_body={"input": text},
+            operation_name="embedding",
         )
-        response.raise_for_status()
-        data = response.json()
         return data["data"][0]["embedding"]
 
     def create_chat_completion(self, messages: Iterable[dict[str, str]]) -> str:
         """Generate a chatbot response using GPT-4.1-mini."""
 
         endpoint = self._chat_url()
-        response = self.http_client.post(
+        data = self._post_json(
             endpoint,
-            headers=self._headers(),
-            json={
+            json_body={
                 "messages": list(messages),
                 "temperature": 0.3,
                 "max_tokens": 450,
             },
+            operation_name="chat completion",
         )
-        response.raise_for_status()
-        data = response.json()
         content = data["choices"][0]["message"].get("content", "")
         return content.strip()
+
+    def _post_json(self, endpoint: str, json_body: dict[str, Any], operation_name: str) -> dict[str, Any]:
+        """Send a POST request and convert common connection errors into readable messages."""
+
+        try:
+            response = self.http_client.post(
+                endpoint,
+                headers=self._headers(),
+                json=json_body,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.ConnectTimeout as error:
+            raise RuntimeError(
+                f"The {operation_name} request timed out while connecting to the IFB220 API. "
+                "This usually means the API gateway is slow, your internet connection is blocking it, "
+                "or a VPN/proxy/firewall is interfering. Try again, switch networks, or test the endpoint with curl."
+            ) from error
+        except httpx.HTTPStatusError as error:
+            raise RuntimeError(
+                f"The {operation_name} request reached the IFB220 API but failed with "
+                f"HTTP {error.response.status_code}: {error.response.text}"
+            ) from error
+        except httpx.RequestError as error:
+            raise RuntimeError(
+                f"The {operation_name} request could not reach the IFB220 API: {error}"
+            ) from error
 
     def _headers(self) -> dict[str, str]:
         # IFB220's API Management gateway may accept either api-key or
