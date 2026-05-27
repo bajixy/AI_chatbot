@@ -21,6 +21,8 @@ class Settings:
     allowed_topic: str
     similarity_threshold: float
     max_history_messages: int
+    chat_endpoint_url: str | None = None
+    embedding_endpoint_url: str | None = None
 
 
 def clean_env_value(value: str | None) -> str | None:
@@ -31,15 +33,13 @@ def clean_env_value(value: str | None) -> str | None:
     return value.strip().strip('"').strip("'").strip()
 
 
-def validate_endpoint(endpoint: str) -> None:
-    """Fail early with a useful message if the endpoint is malformed."""
+def validate_endpoint(endpoint: str, variable_name: str = "AZURE_OPENAI_ENDPOINT") -> None:
+    """Fail early with a useful message if an endpoint is malformed."""
 
     parsed = urlparse(endpoint)
     if parsed.scheme != "https" or not parsed.netloc:
         raise RuntimeError(
-            "AZURE_OPENAI_ENDPOINT is malformed. Use only the base endpoint, for example:\n"
-            "AZURE_OPENAI_ENDPOINT=https://prd-ifb220-apim.azure-api.net/ifb220-ai\n"
-            "Do not include /chat/completions or ?api-version= in this value."
+            f"{variable_name} is malformed. It must start with https:// and include a valid host."
         )
 
 
@@ -63,6 +63,14 @@ def get_settings() -> Settings:
 
     validate_endpoint(required_values["AZURE_OPENAI_ENDPOINT"])
 
+    chat_endpoint_url = clean_env_value(os.getenv("CHAT_ENDPOINT_URL"))
+    embedding_endpoint_url = clean_env_value(os.getenv("EMBEDDING_ENDPOINT_URL"))
+
+    if chat_endpoint_url:
+        validate_endpoint(chat_endpoint_url, "CHAT_ENDPOINT_URL")
+    if embedding_endpoint_url:
+        validate_endpoint(embedding_endpoint_url, "EMBEDDING_ENDPOINT_URL")
+
     return Settings(
         azure_endpoint=required_values["AZURE_OPENAI_ENDPOINT"],
         azure_api_key=required_values["AZURE_OPENAI_API_KEY"],
@@ -73,4 +81,6 @@ def get_settings() -> Settings:
         allowed_topic=(clean_env_value(os.getenv("ALLOWED_TOPIC")) or "gardening").lower(),
         similarity_threshold=float(clean_env_value(os.getenv("SIMILARITY_THRESHOLD")) or "0.72"),
         max_history_messages=int(clean_env_value(os.getenv("MAX_HISTORY_MESSAGES")) or "8"),
+        chat_endpoint_url=chat_endpoint_url,
+        embedding_endpoint_url=embedding_endpoint_url,
     )
