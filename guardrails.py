@@ -40,11 +40,54 @@ UNSAFE_PATTERNS = [
     r"steal (passwords|credentials|data)",
 ]
 
+GARDENING_KEYWORDS = [
+    "garden",
+    "gardening",
+    "gardener",
+    "horticulture",
+    "horticultural",
+    "plant",
+    "plants",
+    "flower",
+    "flowers",
+    "vegetable",
+    "vegetables",
+    "herb",
+    "herbs",
+    "soil",
+    "compost",
+    "fertiliser",
+    "fertilizer",
+    "mulch",
+    "watering",
+    "pruning",
+    "pest",
+    "pests",
+    "seed",
+    "seeds",
+    "seedling",
+    "seedlings",
+    "greenhouse",
+    "lawn",
+    "rose",
+    "roses",
+    "tomato",
+    "tomatoes",
+    "basil",
+    "aphid",
+    "aphids",
+    "monty don",
+    "carol klein",
+    "alan titchmarsh",
+    "costa georgiadis",
+]
+
 TOPIC_DESCRIPTION_TEMPLATE = """
 Gardening and garden care, including plants, flowers, vegetables, herbs,
 soil, composting, fertiliser, mulch, watering, pruning, pests, plant diseases,
 seeds, seedlings, garden tools, seasonal planting, indoor plants, outdoor gardens,
-climate-aware planting, sustainable gardening, and practical plant maintenance.
+climate-aware planting, sustainable gardening, horticulture, gardening experts,
+famous gardeners such as Monty Don, and practical plant maintenance.
 """
 
 
@@ -80,6 +123,13 @@ class Guardrails:
             return GuardrailResult(False, "unsafe_request_detected")
 
         similarity = self._topic_similarity(cleaned)
+
+        # Embeddings can be too strict for short questions like "Who is Monty Don?".
+        # This keyword fallback reduces false refusals for clearly gardening-related terms
+        # while still leaving unsafe and prompt-injection checks as the first line of defence.
+        if self._is_clear_gardening_keyword_match(lowered):
+            return GuardrailResult(True, "allowed_gardening_keyword_match", similarity)
+
         if similarity < self.settings.similarity_threshold:
             return GuardrailResult(False, "off_topic_embedding_check", similarity)
 
@@ -100,6 +150,9 @@ class Guardrails:
             return GuardrailResult(False, "unsafe_model_output")
 
         similarity = self._topic_similarity(output)
+        if self._is_clear_gardening_keyword_match(lowered):
+            return GuardrailResult(True, "allowed_output_gardening_keyword_match", similarity)
+
         if similarity < max(0.55, self.settings.similarity_threshold - 0.15):
             return GuardrailResult(False, "off_topic_output_embedding_check", similarity)
 
@@ -117,6 +170,11 @@ class Guardrails:
             f"Relevant questions should be directly related to {topic}, practical advice about {topic}, "
             f"or safe educational explanations about {topic}."
         )
+
+    def _is_clear_gardening_keyword_match(self, text: str) -> bool:
+        if self.settings.allowed_topic != "gardening":
+            return self.settings.allowed_topic in text
+        return any(keyword in text for keyword in GARDENING_KEYWORDS)
 
     @staticmethod
     def _matches_any(text: str, patterns: list[str]) -> bool:
