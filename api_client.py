@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 import httpx
 
 from config import Settings
+from monitoring import TokenUsage
 
 
 class AzureAIClient:
@@ -30,8 +31,8 @@ class AzureAIClient:
         )
         return data["data"][0]["embedding"]
 
-    def create_chat_completion(self, messages: Iterable[dict[str, str]]) -> str:
-        """Generate a chatbot response using GPT-4.1-mini."""
+    def create_chat_completion(self, messages: Iterable[dict[str, str]]) -> tuple[str, TokenUsage]:
+        """Generate a chatbot response using GPT-4.1-mini and return token usage."""
 
         endpoint = self._chat_url()
         data = self._post_json(
@@ -44,7 +45,13 @@ class AzureAIClient:
             operation_name="chat completion",
         )
         content = data["choices"][0]["message"].get("content", "")
-        return content.strip()
+        usage_data = data.get("usage", {})
+        usage = TokenUsage(
+            prompt_tokens=usage_data.get("prompt_tokens"),
+            completion_tokens=usage_data.get("completion_tokens"),
+            total_tokens=usage_data.get("total_tokens"),
+        )
+        return content.strip(), usage
 
     def _post_json(self, endpoint: str, json_body: dict[str, Any], operation_name: str) -> dict[str, Any]:
         """Send a POST request and convert common connection errors into readable messages."""
@@ -101,4 +108,10 @@ class AzureAIClient:
         return urljoin(self._base_endpoint(), path)
 
     def _base_endpoint(self) -> str:
-        return self.settings.azure_endpoint.rstrip("/") + "/"
+        # Normal value should be https://.../ifb220-ai. This also protects
+        # against accidentally pasting https://.../ifb220-ai/openai/responses...
+        endpoint = self.settings.azure_endpoint.strip().rstrip("/")
+        marker = "/openai"
+        if marker in endpoint:
+            endpoint = endpoint.split(marker, maxsplit=1)[0]
+        return endpoint + "/"
