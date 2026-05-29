@@ -21,6 +21,7 @@ class Settings:
     allowed_topic: str
     similarity_threshold: float
     max_history_messages: int
+    max_estimated_prompt_tokens: int
     chat_endpoint_url: str | None = None
     embedding_endpoint_url: str | None = None
 
@@ -41,6 +42,30 @@ def validate_endpoint(endpoint: str, variable_name: str = "AZURE_OPENAI_ENDPOINT
         raise RuntimeError(
             f"{variable_name} is malformed. It must start with https:// and include a valid host."
         )
+
+
+def get_int_setting(name: str, default: int) -> int:
+    """Load an integer environment variable with a clear error message."""
+
+    value = clean_env_value(os.getenv(name))
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a whole number, but got: {value}") from error
+
+
+def get_float_setting(name: str, default: float) -> float:
+    """Load a float environment variable with a clear error message."""
+
+    value = clean_env_value(os.getenv(name))
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a number, but got: {value}") from error
 
 
 def get_settings() -> Settings:
@@ -79,8 +104,9 @@ def get_settings() -> Settings:
         chat_deployment_name=required_values["CHAT_DEPLOYMENT_NAME"],
         embedding_deployment_name=required_values["EMBEDDING_DEPLOYMENT_NAME"],
         allowed_topic=(clean_env_value(os.getenv("ALLOWED_TOPIC")) or "gardening").lower(),
-        similarity_threshold=float(clean_env_value(os.getenv("SIMILARITY_THRESHOLD")) or "0.72"),
-        max_history_messages=int(clean_env_value(os.getenv("MAX_HISTORY_MESSAGES")) or "8"),
+        similarity_threshold=get_float_setting("SIMILARITY_THRESHOLD", 0.72),
+        max_history_messages=get_int_setting("MAX_HISTORY_MESSAGES", 8),
+        max_estimated_prompt_tokens=get_int_setting("MAX_ESTIMATED_PROMPT_TOKENS", 3000),
         chat_endpoint_url=chat_endpoint_url,
         embedding_endpoint_url=embedding_endpoint_url,
     )
